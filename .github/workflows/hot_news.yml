@@ -1,0 +1,25 @@
+name: Daily Hot News Crawler
+
+on:
+  schedule:
+    # 北京时间早上 9:00 执行 (UTC 1:00)
+    - cron: '0 1 * * *' 
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Crawler
+        run: python crawler.py
