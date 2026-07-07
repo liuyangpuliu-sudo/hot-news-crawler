@@ -169,13 +169,104 @@ def fetch_zhihu_hot():
     return results
 
 
-def save_output(weibo_list, zhihu_list):
+def fetch_bilibili_hot():
+    """抓取B站热搜词，返回结构化列表"""
+    print("🌐 获取B站热搜...")
+    titles = []
+
+    # 源1: B站官方热搜词接口
+    print("🔄 尝试 B站热搜词接口...")
+    data = fetch_json("https://s.search.bilibili.com/main/hotword")
+    if data and isinstance(data, dict):
+        items = data.get('list', []) or data.get('data', {}).get('trending', {}).get('list', [])
+        if items:
+            titles = [{'title': item.get('show_name') or item.get('keyword', '无标题'),
+                       'hot': item.get('heat_score', '') or item.get('word_type', '')} for item in items[:10]]
+            print("✅ 通过 B站热搜词接口获取成功")
+
+    # 源2: B站热门视频榜单兜底 (用视频标题代替热搜词)
+    if not titles:
+        print("🔄 降级为 B站热门视频榜单...")
+        try:
+            data2 = fetch_json("https://api.bilibili.com/x/web-interface/popular?ps=10&pn=1")
+            if data2 and data2.get('code') == 0:
+                items = data2.get('data', {}).get('list', [])
+                titles = [{'title': item.get('title', '无标题'), 'hot': item.get('stat', {}).get('view', '')}
+                          for item in items[:10]]
+                print("✅ 从 B站热门视频榜单获取成功")
+        except Exception as e:
+            print(f"⚠️ B站热门视频榜单失败: {e}")
+
+    print("\n📺 ===== B站热搜 TOP 10 =====")
+    results = []
+    if not titles:
+        print("❌ 所有数据源均未获取到数据。")
+        return results
+
+    for idx, item in enumerate(titles[:10], 1):
+        title = item.get('title', '无标题')
+        heat = item.get('hot', '')
+        print(f"{idx}. {title}" + (f" ({heat})" if heat else ""))
+        results.append({'rank': idx, 'title': title, 'heat': heat})
+    return results
+
+
+def fetch_douyin_hot():
+    """抓取抖音热搜榜，返回结构化列表"""
+    print("🌐 获取抖音热搜...")
+    titles = []
+
+    # 源1: 抖音官方热搜接口
+    print("🔄 尝试抖音官方热搜接口...")
+    try:
+        session = create_session()
+        resp = session.get(
+            "https://www.iesdouyin.com/aweme/v1/web/hot/search/list/",
+            params={'device_platform': 'webapp', 'aid': '6383', 'channel': 'channel_pc_web'},
+            timeout=15, verify=False
+        )
+        data = resp.json()
+        items = data.get('data', {}).get('word_list', [])
+        if items:
+            titles = [{'title': item.get('word', '无标题'), 'hot': item.get('hot_value', '')} for item in items[:10]]
+            print("✅ 通过抖音官方接口获取成功")
+    except Exception as e:
+        print(f"⚠️ 抖音官方接口失败: {e}")
+
+    # 源2: 52vmy 第三方聚合 API 兜底
+    if not titles:
+        print("🔄 尝试 52vmy 抖音热搜 API...")
+        data2 = fetch_json("https://api.52vmy.cn/api/wl/douyin/hot")
+        if data2 and isinstance(data2, dict) and data2.get('code') == 200:
+            items = data2.get('data', [])
+            if items:
+                titles = [{'title': item.get('word', item.get('title', '无标题')), 'hot': item.get('hot', '')}
+                          for item in items[:10]]
+                print("✅ 通过 52vmy API 获取成功")
+
+    print("\n🎵 ===== 抖音热搜 TOP 10 =====")
+    results = []
+    if not titles:
+        print("❌ 所有数据源均未获取到数据。")
+        return results
+
+    for idx, item in enumerate(titles[:10], 1):
+        title = item.get('title', '无标题')
+        heat = item.get('hot', '')
+        print(f"{idx}. {title}" + (f" ({heat})" if heat else ""))
+        results.append({'rank': idx, 'title': title, 'heat': heat})
+    return results
+
+
+def save_output(weibo_list, zhihu_list, bilibili_list, douyin_list):
     """把抓取结果写成 JSON 文件，供前端网页读取"""
     beijing_tz = timezone(timedelta(hours=8))
     payload = {
         'generated_at': datetime.now(beijing_tz).isoformat(),
         'weibo': weibo_list,
         'zhihu': zhihu_list,
+        'bilibili': bilibili_list,
+        'douyin': douyin_list,
     }
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
@@ -188,5 +279,9 @@ if __name__ == "__main__":
     weibo_data = fetch_weibo_hot()
     time.sleep(1)
     zhihu_data = fetch_zhihu_hot()
-    save_output(weibo_data, zhihu_data)
+    time.sleep(1)
+    bilibili_data = fetch_bilibili_hot()
+    time.sleep(1)
+    douyin_data = fetch_douyin_hot()
+    save_output(weibo_data, zhihu_data, bilibili_data, douyin_data)
     print("\n✅ 抓取任务执行完毕。")
