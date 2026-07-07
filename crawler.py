@@ -3,7 +3,9 @@ import random
 import time
 import re
 import json
+import os
 import html as html_mod
+from datetime import datetime, timezone, timedelta
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -13,6 +15,8 @@ USER_AGENTS = [
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
 ]
+
+OUTPUT_PATH = os.path.join('data', 'hot_news.json')
 
 
 def create_session():
@@ -49,7 +53,7 @@ def fetch_json(url, headers=None, max_retries=2):
 
 
 def fetch_weibo_hot():
-    """抓取微博热搜"""
+    """抓取微博热搜，返回结构化列表"""
     session = create_session()
     print("🌐 获取微博 cookies...")
     try:
@@ -59,6 +63,7 @@ def fetch_weibo_hot():
         print(f"⚠️ 访问微博首页失败: {e}")
 
     url = "https://weibo.com/ajax/side/hotSearch"
+    data = None
     for attempt in range(3):
         try:
             headers = {'Referer': 'https://weibo.com/', 'Accept': 'application/json, text/plain, */*'}
@@ -70,21 +75,23 @@ def fetch_weibo_hot():
             print(f"⚠️ 微博请求失败 (第 {attempt + 1} 次): {e}")
             if attempt < 2:
                 time.sleep(2)
-            data = None
 
     print("\n🔥 ===== 微博热搜 TOP 10 =====")
+    results = []
     if not data or 'data' not in data:
         print("❌ 未获取到微博数据。")
-        return
+        return results
 
     for idx, item in enumerate(data['data'].get('realtime', [])[:10], 1):
         word = item.get('word', '无标题')
-        num = item.get('num', 'N/A')
+        num = item.get('num', '')
         print(f"{idx}. {word} (热度: {num})")
+        results.append({'rank': idx, 'title': word, 'heat': num})
+    return results
 
 
 def fetch_zhihu_hot():
-    """抓取知乎热榜 - 降级为从 52vmy 免费 API + 百度热搜兜底"""
+    """抓取知乎热榜 - 降级为从 52vmy 免费 API + 百度热搜兜底，返回结构化列表"""
     print("🌐 获取知乎热榜...")
     titles = []
 
@@ -123,7 +130,6 @@ def fetch_zhihu_hot():
             session = create_session()
             resp = session.get("https://top.baidu.com/board?tab=realtime", timeout=15, verify=False)
             resp.encoding = 'utf-8'
-            # 百度页面数据在 script 中
             found = re.findall(r'"word":"(.*?)"', resp.text)
             if found:
                 titles = [{'title': w, 'hot': ''} for w in found[:10]]
@@ -150,19 +156,37 @@ def fetch_zhihu_hot():
             print(f"⚠️ 开源中国失败: {e}")
 
     print("\n💡 ===== 知乎热榜 TOP 10 =====")
+    results = []
     if not titles:
         print("❌ 所有数据源均未获取到数据。")
-        return
+        return results
 
     for idx, item in enumerate(titles[:10], 1):
         title = item.get('title', '无标题')
         heat = item.get('hot', '')
         print(f"{idx}. {title}" + (f" ({heat})" if heat else ""))
+        results.append({'rank': idx, 'title': title, 'heat': heat})
+    return results
+
+
+def save_output(weibo_list, zhihu_list):
+    """把抓取结果写成 JSON 文件，供前端网页读取"""
+    beijing_tz = timezone(timedelta(hours=8))
+    payload = {
+        'generated_at': datetime.now(beijing_tz).isoformat(),
+        'weibo': weibo_list,
+        'zhihu': zhihu_list,
+    }
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    print(f"\n💾 已写入 {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":
     print("🚀 开始执行热点资讯抓取任务...")
-    fetch_weibo_hot()
+    weibo_data = fetch_weibo_hot()
     time.sleep(1)
-    fetch_zhihu_hot()
+    zhihu_data = fetch_zhihu_hot()
+    save_output(weibo_data, zhihu_data)
     print("\n✅ 抓取任务执行完毕。")
