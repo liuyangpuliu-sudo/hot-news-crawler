@@ -1,10 +1,12 @@
 name: Daily Hot News Crawler
-
 on:
   schedule:
     # 北京时间早上 9:00 执行 (UTC 1:00)
-    - cron: '0 1 * * *' 
+    - cron: '0 1 * * *'
   workflow_dispatch: # 允许手动触发
+
+permissions:
+  contents: write # 允许把抓取结果提交回仓库
 
 jobs:
   crawl:
@@ -23,3 +25,15 @@ jobs:
 
       - name: Run Crawler
         run: python crawler.py
+
+      - name: Commit and push data if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/hot_news.json
+          if git diff --staged --quiet; then
+            echo "数据无变化，跳过提交"
+          else
+            git commit -m "chore: update hot news data [skip ci]"
+            git push
+          fi
