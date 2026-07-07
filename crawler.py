@@ -244,6 +244,27 @@ def fetch_douyin_hot():
                           for item in items[:10]]
                 print("✅ 通过 52vmy API 获取成功")
 
+    # 源3: tenapi 第三方聚合 API 兜底
+    if not titles:
+        print("🔄 尝试 tenapi 抖音热搜 API...")
+        data3 = fetch_json("https://tenapi.cn/v2/douyinhot")
+        if data3 and isinstance(data3, dict) and data3.get('code') == 200:
+            items = data3.get('data', [])
+            if items:
+                titles = [{'title': item.get('word', item.get('title', '无标题')),
+                           'hot': item.get('hot_value', item.get('hot', ''))} for item in items[:10]]
+                print("✅ 通过 tenapi API 获取成功")
+
+    # 源4: vvhan 第三方聚合 API 兜底
+    if not titles:
+        print("🔄 尝试 vvhan 抖音热搜 API...")
+        data4 = fetch_json("https://api.vvhan.com/api/hotlist?type=douyin")
+        if data4 and isinstance(data4, dict) and data4.get('success'):
+            items = data4.get('data', [])
+            if items:
+                titles = [{'title': item.get('title', '无标题'), 'hot': item.get('hot', '')} for item in items[:10]]
+                print("✅ 通过 vvhan API 获取成功")
+
     print("\n🎵 ===== 抖音热搜 TOP 10 =====")
     results = []
     if not titles:
